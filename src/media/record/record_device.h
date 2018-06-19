@@ -10,6 +10,7 @@
 #include "concurrency.h"
 #include "sensor.h"
 #include "record_sensor.h"
+#include <core/serialization.h>
 
 namespace librealsense
 {
@@ -20,7 +21,7 @@ namespace librealsense
     public:
         static const uint64_t MAX_CACHED_DATA_SIZE = 1920 * 1080 * 4 * 30; // ~1 sec of HD video @ 30 FPS
 
-        record_device(std::shared_ptr<device_interface> device, std::shared_ptr<device_serializer::writer> serializer);
+        record_device(std::shared_ptr<device_interface> device, std::shared_ptr<device_serializer::writer> serializer,int max_frame_rate=5);
         virtual ~record_device();
 
         std::shared_ptr<context> get_context() const override;
@@ -75,6 +76,11 @@ namespace librealsense
         std::once_flag m_first_call_flag;
         void initialize_recording();
         void stop_gracefully(to_string error_msg);
+
+        device_serializer::nanoseconds _last_capture_timestamp_color;
+        device_serializer::nanoseconds _last_capture_timestamp_depth;
+        int _max_frame_rate;
+        std::string _save_dir;
     };
 
     MAP_EXTENSION(RS2_EXTENSION_RECORD, record_device);

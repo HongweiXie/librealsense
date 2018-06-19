@@ -706,6 +706,9 @@ if(LRS_TRY_USE_AVX)
     set_source_files_properties(src/image_avx.cpp PROPERTIES COMPILE_FLAGS -mavx2)
 endif()
 
+find_package(OpenCV REQUIRED)
+INCLUDE_DIRECTORIES(${OpenCV_INCLUDE_DIRS})
+
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 if(BUILD_SHARED_LIBS)
     if(WIN32)
@@ -730,7 +733,7 @@ if(BUILD_WITH_TM2)
 endif()
 set_target_properties(realsense2 PROPERTIES VERSION ${REALSENSE_VERSION_STRING}
                                 SOVERSION ${REALSENSE_VERSION_MAJOR})
-target_link_libraries(realsense2 PRIVATE realsense-file ${CMAKE_THREAD_LIBS_INIT} ${TRACKING_DEVICE_LIBS})
+target_link_libraries(realsense2 PRIVATE realsense-file ${CMAKE_THREAD_LIBS_INIT} ${TRACKING_DEVICE_LIBS} ${OpenCV_LIBRARIES})
 
 if (NOT USE_SYSTEM_LIBUSB)
     if(NOT WIN32)
@@ -756,6 +759,7 @@ set_target_properties (realsense2 PROPERTIES
     FOLDER Library
 )
 
+#${OpenCV_LIBRARIES}
 set(LRS_LIB_NAME realsense2)
 
 # Add additional include directories to allow file to include rosbag headers
@@ -827,9 +831,9 @@ if(BUILD_EXAMPLES)
   add_subdirectory(tools)
 endif()
 
-if(BUILD_UNIT_TESTS)
-  add_subdirectory(unit-tests)
-endif()
+#if(BUILD_UNIT_TESTS)
+#  add_subdirectory(unit-tests)
+#endif()
 
 if (ENFORCE_METADATA)
   add_definitions(-DENFORCE_METADATA)

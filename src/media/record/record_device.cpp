@@ -5,11 +5,19 @@
 #include <core/motion.h>
 #include <core/advanced_mode.h>
 #include "record_device.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <../third-party/stb_image_write.h>
+#include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 using namespace device_serializer;
 
 librealsense::record_device::record_device(std::shared_ptr<librealsense::device_interface> device,
-                                      std::shared_ptr<librealsense::device_serializer::writer> serializer):
+                                      std::shared_ptr<librealsense::device_serializer::writer> serializer,
+                                           int max_frame_rate):
     m_write_thread([](){return std::make_shared<dispatcher>(std::numeric_limits<unsigned int>::max());}),
     m_is_recording(true),
     m_record_pause_time(0)
@@ -28,6 +36,12 @@ librealsense::record_device::record_device(std::shared_ptr<librealsense::device_
     m_ros_writer = serializer;
     (*m_write_thread)->start(); //Start thread before creating the sensors (since they might write right away)
     m_sensors = create_record_sensors(m_device);
+    _last_capture_timestamp_color=nanoseconds(0);
+    _last_capture_timestamp_depth=nanoseconds(0);
+    _max_frame_rate=max_frame_rate;
+    _save_dir=serializer->get_file_name();
+    _save_dir=_save_dir.substr(0,_save_dir.rfind('.bag')-3);
+    mkdir(_save_dir.c_str(),S_IRUSR | S_IWUSR | S_IXUSR | S_IRWXG | S_IRWXO);
     LOG_DEBUG("Created record_device");
 }
 
@@ -131,7 +145,36 @@ void librealsense::record_device::write_data(size_t sensor_index, librealsense::
     }
 
     m_cached_data_size = cached_data_size;
+
+    auto stream_type = frame.frame->get_stream()->get_stream_type();
     auto capture_time = get_capture_time();
+    if(stream_type==rs2_stream::RS2_STREAM_COLOR)
+    {
+        auto diff=(capture_time.count()-_last_capture_timestamp_color.count())/1000000;
+        if(diff<(1000/_max_frame_rate))
+            return;
+        else
+        {
+            _last_capture_timestamp_color=capture_time;
+        }
+
+    }
+    else if(stream_type==rs2_stream::RS2_STREAM_DEPTH)
+    {
+        auto diff=(capture_time.count()-_last_capture_timestamp_depth.count())/1000000;
+        if(diff<(1000/_max_frame_rate))
+            return;
+        else
+            _last_capture_timestamp_depth=capture_time;
+    }
+    else
+    {
+        return;
+    }
+
+
+
+
     //TODO: remove usage of shared pointer when frame_holder is copyable
     auto frame_holder_ptr = std::make_shared<frame_holder>();
     *frame_holder_ptr = std::move(frame);
@@ -157,6 +200,35 @@ void librealsense::record_device::write_data(size_t sensor_index, librealsense::
         {
             const uint32_t device_index = 0;
             auto stream_type = frame_holder_ptr->frame->get_stream()->get_stream_type();
+            // We can only save video frames as pngs, so we skip the rest
+            // Write images to disk
+            if(stream_type==rs2_stream::RS2_STREAM_COLOR)
+            {
+                std::stringstream png_file;
+                png_file<<_save_dir << "/Image" << (long)frame_holder_ptr->frame->get_frame_system_time() << ".jpg";
+//                stbi_write_png(png_file.str().c_str(), 1280, 720,
+//                               3, frame_holder_ptr->frame->get_frame_data(), 1280*3);
+                cv::Mat rgb(720,1280,CV_8UC3,(uchar*)frame_holder_ptr->frame->get_frame_data());
+                cv::Mat bgr;
+                cv::cvtColor(rgb,bgr,CV_RGB2BGR);
+                cv::imwrite(png_file.str().c_str(),bgr);
+                std::cout << "Saved " << png_file.str() << std::endl;
+            }
+            else if(stream_type==rs2_stream::RS2_STREAM_DEPTH)
+            {
+                std::stringstream png_file;
+                png_file<<_save_dir << "/Depth" << (long)frame_holder_ptr->frame->get_frame_system_time() << ".png";
+//                stbi_write_png(png_file.str().c_str(), 640, 480,
+//                               2, frame_holder_ptr->frame->get_frame_data(), 640*2);
+                cv::Mat depth(480,640,CV_16UC1,(uchar*)frame_holder_ptr->frame->get_frame_data());
+                cv::imwrite(png_file.str().c_str(),depth);
+                std::cout << "Saved " << png_file.str() << std::endl;
+            }
+            else
+            {
+                return;
+            }
+
             auto stream_index = static_cast<uint32_t>(frame_holder_ptr->frame->get_stream()->get_stream_index());
             m_ros_writer->write_frame({ device_index, static_cast<uint32_t>(sensor_index), stream_type, stream_index }, capture_time, std::move(*frame_holder_ptr));
             //TODO: restore: std::lock_guard<std::mutex> locker(m_mutex);  m_cached_data_size -= data_size;

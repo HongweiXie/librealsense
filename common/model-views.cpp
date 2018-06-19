@@ -4118,7 +4118,7 @@ namespace rs2
             error_message = e.what();
         }
     }
-
+#include<cstdio>
     void device_model::stop_recording(viewer_model& viewer)
     {
         auto saved_to_filename = _recorder->filename();
@@ -4128,11 +4128,12 @@ namespace rs2
             sub_dev_model->_is_being_recorded = false;
         }
         is_recording = false;
-        notification_data nd{ to_string() << "Saved recording to: " << saved_to_filename,
-            (double)std::chrono::high_resolution_clock::now().time_since_epoch().count(),
-            RS2_LOG_SEVERITY_INFO,
-            RS2_NOTIFICATION_CATEGORY_COUNT };
-        viewer.not_model.add_notification(nd);
+        std::remove(saved_to_filename.c_str());
+//        notification_data nd{ to_string() << "Saved recording to: " << saved_to_filename,
+//            (double)std::chrono::high_resolution_clock::now().time_since_epoch().count(),
+//            RS2_LOG_SEVERITY_INFO,
+//            RS2_NOTIFICATION_CATEGORY_COUNT };
+//        viewer.not_model.add_notification(nd);
     }
 
     void device_model::pause_record()
@@ -4656,6 +4657,7 @@ namespace rs2
         }
         ImGui::PopStyleColor(2);
     }
+    static std::string default_path=rs2::get_folder_path(rs2::special_folder::user_documents)+"/data/" ;
 
     float device_model::draw_device_panel(float panel_width,
                                           ux_window& window,
@@ -4705,8 +4707,15 @@ namespace rs2
             }
             else
             {
-                auto path = rs2::get_folder_path(rs2::special_folder::user_documents) + rs2::get_timestamped_file_name() + ".bag";
-                start_recording(path, error_message);
+//                auto path = rs2::get_folder_path(rs2::special_folder::user_documents)+"/data/" ;//
+                auto select_path=file_dialog_open(file_dialog_mode::open_dir,"All Files\0*\0",default_path.c_str(),"name_label_scene");
+                if(select_path)
+                {
+                    default_path=std::string(select_path)+"/";
+                    auto path=default_path+rs2::get_timestamped_file_name() + ".bag";
+                    start_recording(path, error_message);
+                }
+
             }
         }
         if (ImGui::IsItemHovered())
